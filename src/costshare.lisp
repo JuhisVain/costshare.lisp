@@ -1,6 +1,29 @@
 (defvar *bills* nil)
 (defvar *payers* nil)
 
+(defun test-script ()
+  (setf *bills* nil)
+  (setf *payers* nil)
+  (make-payer 'tarzan)
+  (make-payer 'jane)
+  (make-payer 'cheeta)
+  (make-bill 'foodstore 'jane)
+  (make-bill 'bongostore 'tarzan)
+  (make-item 'bananas 'foodstore)
+  (make-item 'apples 'foodstore)
+  (make-item '24packofbeer 'foodstore)
+  (make-item 'bongos 'bongostore)
+  (make-item 'kongas 'bongostore)
+  (make-item 'ocarina 'bongostore)
+  (set-item-price 'bananas 'foodstore 5.5)
+  (set-item-price 'apples 'foodstore 4)
+  (set-item-price '24packofbeer 'foodstore 22.75)
+  (set-item-price 'bongos 'bongostore 99.90)
+  (set-item-price 'kongas 'bongostore 150.00)
+  (set-item-price 'ocarina 'bongostore 15)
+  (set-weights-of-to nil 1)
+  (set-all-item-weights '24packofbeer 'foodstore '(4 2 18)))
+  
 (defun make-bill (bill-name bill-payer-name)
   (let ((bill-payer (payer-name-exists bill-payer-name))) ;pointer to bill's payer in *payers*
     (if (and (not (bill-name-exists bill-name)) bill-payer)
@@ -62,6 +85,14 @@
   (do-for-all-items #'(lambda (x)
 			(setf (getf x :weights) (substitute to of (getf x :weights))))))
 
+(defun do-for-bills (fun)
+  (dolist (bill *bills*)
+    (funcall fun bill)))
+
+(defun do-for-items-in-bill (bill fun)
+  (dolist (item (getf bill :items))
+    (funcall fun item)))
+
 (defun do-for-all-items (fun)
   (dolist (bill *bills*)
     (dolist (item (getf bill :items))
@@ -85,6 +116,28 @@
   (car
    (member bill-name *bills* :test #'(lambda (x y)
 				       (string= x (getf y :name))))))
+
+(defun compute-item (item)
+  (let ((total-weight (reduce #'+ (getf item :weights)))
+	(price (getf item :price)))
+    (mapcar #'(lambda (x)
+		(/ (* x price) total-weight))
+	    (getf item :weights))))
+
+(defun compute-bill (bill)
+  (let ((computed-bill ())) 
+    (dolist (item (getf bill :items))
+      (push (list :shares (compute-item item) :name (getf item :name)) computed-bill))
+    computed-bill))
+    
+(defun compute-bills ()
+  (let ((bill-results ()))
+    (dolist (bill *bills*)
+      (push (list :items (compute-bill bill) :name (getf bill :name)) bill-results))
+    bill-results))
+
+;;(defun compute-all ()
+;;  (let ))
 
 (defun input (message)
   (format *query-io* "~S:" message)
