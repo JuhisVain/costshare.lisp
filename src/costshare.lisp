@@ -85,8 +85,8 @@
   (do-for-all-items #'(lambda (x)
 			(setf (getf x :weights) (substitute to of (getf x :weights))))))
 
-(defun do-for-bills (fun)
-  (dolist (bill *bills*)
+(defun do-for-bills (fun &optional (bills *bills*))
+  (dolist (bill bills)
     (funcall fun bill)))
 
 (defun do-for-items-in-bill (bill fun)
@@ -124,20 +124,65 @@
 		(/ (* x price) total-weight))
 	    (getf item :weights))))
 
+;;witness my spaghetti powers:
 (defun compute-bill (bill)
-  (let ((computed-bill ())) 
-    (dolist (item (getf bill :items))
-      (push (list :shares (compute-item item) :name (getf item :name)) computed-bill))
-    computed-bill))
+  (flet ((compute-totals (computed-bill) ;;flet because requires unfinished result of compute-bill
+	   (let ((share-list ()))
+	     (dolist (item computed-bill)
+	       (push (getf item :shares) share-list))
+	     (apply #'mapcar #'+ share-list)))
+	 
+	 (compute-owes (total-bill-shares payer)
+	   (let* ((payer-index (apply #'payer-name-index payer))
+		  (total-bill-owes (do-to-index
+				       payer-index
+				     total-bill-shares
+				     #'(lambda (x)
+					 (* -1 (- (reduce #'+ total-bill-shares) x))))))
+	     total-bill-owes)))
     
+    (let ((computed-bill ())) 
+      (dolist (item (getf bill :items))
+	(push (list :shares (compute-item item)
+		    :name (getf item :name)
+		    :price (getf item :price))
+	      computed-bill))
+      
+      (reverse computed-bill)
+      (push (compute-totals computed-bill) computed-bill)
+      (push :total-bill-shares computed-bill)
+      (push (compute-owes
+	     (getf computed-bill :total-bill-shares)
+	     (getf bill :payer))
+	    computed-bill)
+      (push :total-bill-owes computed-bill)
+      computed-bill)))
+  
 (defun compute-bills ()
   (let ((bill-results ()))
     (dolist (bill *bills*)
-      (push (list :items (compute-bill bill) :name (getf bill :name)) bill-results))
-    bill-results))
+      (push (list :name (getf bill :name)
+		  :payer (getf bill :payer)
+		  :items (compute-bill bill))
+	    bill-results))
+    (reverse bill-results)))
 
-;;(defun compute-all ()
-;;  (let ))
+(defun do-to-index (index list fun)
+  (cond ((eq list nil ) nil)
+	((not (zerop index)) (cons (car list) (do-to-index (decf index) (cdr list) fun)))
+	((zerop index)
+	 (cons (funcall fun (car list))
+	       (cdr list)))))
+
+(defun do-to-all-but-index (index list fun)
+  (cond ((eq list nil) nil)
+	((not (zerop index))
+	 (cons (funcall fun (car list))
+	       (do-to-all-but-index (decf index) (cdr list) fun)))
+	((zerop index)
+	 (cons (car list)
+	 (do-to-all-but-index (decf index) (cdr list) fun)))))
+
 
 (defun input (message)
   (format *query-io* "~S:" message)
