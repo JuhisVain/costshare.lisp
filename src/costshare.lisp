@@ -124,39 +124,28 @@
 		(/ (* x price) total-weight))
 	    (getf item :weights))))
 
-;;witness my spaghetti powers:
+(defun compute-totals (computed-bill)
+  (let ((share-list ()))
+    (dolist (item computed-bill)
+      (push (getf item :shares) share-list))
+    (apply #'mapcar #'+ share-list)))
+
+(defun compute-owes (total-bill-shares payer)
+  (let* ((payer-index (apply #'payer-name-index payer))
+	 (total-bill-owes
+	  (do-to-index payer-index total-bill-shares
+		       #'(lambda (x)
+			   (* -1 (- (reduce #'+ total-bill-shares) x))))))
+    total-bill-owes))
+
 (defun compute-bill (bill)
-  (flet ((compute-totals (computed-bill) ;;flet because requires unfinished result of compute-bill
-	   (let ((share-list ()))
-	     (dolist (item computed-bill)
-	       (push (getf item :shares) share-list))
-	     (apply #'mapcar #'+ share-list)))
-	 
-	 (compute-owes (total-bill-shares payer)
-	   (let* ((payer-index (apply #'payer-name-index payer))
-		  (total-bill-owes (do-to-index
-				       payer-index
-				     total-bill-shares
-				     #'(lambda (x)
-					 (* -1 (- (reduce #'+ total-bill-shares) x))))))
-	     total-bill-owes)))
-    
-    (let ((computed-bill ())) 
-      (dolist (item (getf bill :items))
-	(push (list :shares (compute-item item)
-		    :name (getf item :name)
-		    :price (getf item :price))
-	      computed-bill))
-      
-      (reverse computed-bill)
-      (push (compute-totals computed-bill) computed-bill)
-      (push :total-bill-shares computed-bill)
-      (push (compute-owes
-	     (getf computed-bill :total-bill-shares)
-	     (getf bill :payer))
-	    computed-bill)
-      (push :total-bill-owes computed-bill)
-      computed-bill)))
+  (let ((computed-bill ())) 
+    (dolist (item (getf bill :items))
+      (push (list :shares (compute-item item)
+		  :name (getf item :name)
+		  :price (getf item :price))
+	    computed-bill))
+    (reverse computed-bill)))
   
 (defun compute-bills ()
   (let ((bill-results ()))
@@ -166,6 +155,29 @@
 		  :items (compute-bill bill))
 	    bill-results))
     (reverse bill-results)))
+
+(defun compute-owes-totals (computed-bills)
+  (cond ((not computed-bills) nil)
+	(t
+	 (push (compute-totals (getf (car computed-bills) :items))
+	       (car computed-bills))
+	 (push :total-shares (car computed-bills))
+	 (push (compute-owes (getf (car computed-bills) :total-shares)
+			     (getf (car computed-bills) :payer))
+	       (car computed-bills))
+	 (push :total-owes (car computed-bills))
+	 (cons (car computed-bills)
+	       (compute-owes-totals (cdr computed-bills))))))
+
+(defun compute-final-totals (bill-list)
+  (let ((all-total-shares (get-all-of-key :total-shares bill-list))
+	(all-total-owes (get-all-of-key :total-owes bill-list)))
+    (list :final-shares (apply #'mapcar #'+ all-total-shares)
+	  :final-owes (apply #'mapcar #'+ all-total-owes)
+	  bill-list)))
+
+(defun get-all-of-key (key list)
+  (if list (cons (getf (car list) key) (get-all-of-key key (cdr list)))))
 
 (defun do-to-index (index list fun)
   (cond ((eq list nil ) nil)
@@ -181,7 +193,8 @@
 	       (do-to-all-but-index (decf index) (cdr list) fun)))
 	((zerop index)
 	 (cons (car list)
-	 (do-to-all-but-index (decf index) (cdr list) fun)))))
+	       (do-to-all-but-index (decf index) (cdr list) fun)))))
+
 
 
 (defun input (message)
