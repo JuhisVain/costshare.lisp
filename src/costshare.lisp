@@ -49,7 +49,7 @@
 (defun make-item (item-name in-bill-name)
   (let ((in-bill (bill-name-exists in-bill-name)))
     (if in-bill
-	(push (list :weights (make-list (length *payers*)) :price 0 :name item-name)
+	(push (list :weights (make-list (length *payers*)) :price nil :name item-name)
 	      (getf in-bill :items))
 	(format t "There is no bill named ~S~%" in-bill-name))))
 
@@ -88,6 +88,13 @@
 		   (setf (getf x :weights)
 			 (delete-index-from-list index (getf x :weights))))))
 	  (t nil))))
+
+(defun set-bill-payer (payer-name bill-name)
+  (let ((payer (payer-name-exists payer-name))
+	(bill (bill-name-exists bill-name)))
+    (if (and payer bill)
+	(setf (getf bill :payer) payer))))
+
 
 ;;Returns list with whatever was at index missing. If index > length fills with NIL.
 (defun delete-index-from-list (index list)
@@ -164,13 +171,26 @@
     (reverse computed-bill)))
   
 (defun compute-bills ()
-  (let ((bill-results ()))
-    (dolist (bill *bills*)
-      (push (list :name (getf bill :name)
-		  :payer (getf bill :payer)
-		  :items (compute-bill bill))
-	    bill-results))
-    (reverse bill-results)))
+  (cond ((data-validp)
+	 (let ((bill-results ()))
+	   (dolist (bill *bills*)
+	     (push (list :name (getf bill :name)
+			 :payer (getf bill :payer)
+			 :items (compute-bill bill))
+		   bill-results))
+	   (reverse bill-results)))
+	(t (format t "NIL values found in data.~%"))))
+
+(defun data-validp ()
+  (and (no-nilsp *payers*) (no-nilsp *bills*)))
+
+(defun no-nilsp (tree)
+  (cond ((atom tree) t)
+	((not tree) nil)
+	((and (car tree)
+	      (no-nilsp (car tree))
+	      (no-nilsp (cdr tree)))
+	 t)))
 
 (defun compute-owes-totals (computed-bills)
   (cond ((not computed-bills) nil)
@@ -186,12 +206,14 @@
 	       (compute-owes-totals (cdr computed-bills))))))
 
 (defun compute-final-totals (bill-list)
-  (let ((all-total-shares (get-all-of-key :total-shares bill-list))
-	(all-total-owes (get-all-of-key :total-owes bill-list)))
-    (list :final-shares (apply #'mapcar #'+ all-total-shares)
-	  :final-owes (apply #'mapcar #'+ all-total-owes)
-	  bill-list)))
-
+  (cond ((not bill-list) nil)
+	(t
+	 (let ((all-total-shares (get-all-of-key :total-shares bill-list))
+	       (all-total-owes (get-all-of-key :total-owes bill-list)))
+	   (list :final-shares (apply #'mapcar #'+ all-total-shares)
+		 :final-owes (apply #'mapcar #'+ all-total-owes)
+		 bill-list)))))
+	
 (defun get-all-of-key (key list)
   (if list (cons (getf (car list) key) (get-all-of-key key (cdr list)))))
 
