@@ -1,7 +1,7 @@
 (defvar *bills* nil)
 (defvar *payers* nil)
 
-(defun test-script ()
+(defun test-script () ;ok, produces same results as c++ version
   (setf *bills* nil)
   (setf *payers* nil)
   (make-payer 'tarzan)
@@ -36,6 +36,42 @@
   (set-all-item-weights 'blue-chair 'sofastore '(0 1 1))
   (set-all-item-weights 'tv-set 'sofastore '(0 1 5))
   (set-all-item-weights 'junk 'sofastore '(1 7 1)))
+
+(defun test-script-2 () ;ok, same as above
+  (setf *bills* nil)
+  (setf *payers* nil)
+  (make-payer "tarzan")
+  (make-payer "jane")
+  (make-payer "cheeta")
+  (make-bill "foodstore" "jane")
+  (make-bill "bongostore" "tarzan")
+  (make-bill "sofastore" "jane")
+  (make-item "bananas" "foodstore")
+  (make-item "apples" "foodstore")
+  (make-item "24packofbeer" "foodstore")
+  (make-item "bongos" "bongostore")
+  (make-item "kongas" "bongostore")
+  (make-item "ocarina" "bongostore")
+  (make-item "red-sofa" "sofastore")
+  (make-item "blue-chair" "sofastore")
+  (make-item "tv-set" "sofastore")
+  (make-item "junk" "sofastore")
+  (set-item-price "bananas" "foodstore" 5.5)
+  (set-item-price "apples" "foodstore" 4)
+  (set-item-price "24packofbeer" "foodstore" 22.75)
+  (set-item-price "bongos" "bongostore" 99.90)
+  (set-item-price "kongas" "bongostore" 150.00)
+  (set-item-price "ocarina" "bongostore" 15)
+  (set-item-price "red-sofa" "sofastore" 799.99)
+  (set-item-price "blue-chair" "sofastore" 15)
+  (set-item-price "tv-set" "sofastore" 500)
+  (set-item-price "junk" "sofastore" 123.12)
+  (set-weights-of-to nil 1)
+  (set-all-item-weights "24packofbeer" "foodstore" '(4 2 18))
+  (set-all-item-weights "red-sofa" "sofastore" '(0 1 1))
+  (set-all-item-weights "blue-chair" "sofastore" '(0 1 1))
+  (set-all-item-weights "tv-set" "sofastore" '(0 1 5))
+  (set-all-item-weights "junk" "sofastore" '(1 7 1)))
 
 (defun test-computation ()
   (compute-final-totals (compute-owes-totals (compute-bills))))
@@ -122,9 +158,11 @@
       (funcall fun item))))
 
 (defun payer-name-exists (bill-payer-name)
-  (car
-   (member bill-payer-name *payers* :test #'(lambda (x y)
-					      (string= x (car y))))))
+  (let ((payer
+	 (car
+	  (member bill-payer-name *payers* :test #'(lambda (x y)
+						     (string= x (car y)))))))
+    (if payer payer (format t "There is no payer named ~A!~%" bill-payer-name))))
 
 ;;returns index (0..n) of payer-name within *payers*. NIL if not found.
 (defun payer-name-index (payer-name &optional (payers-list *payers*) (index 0))
@@ -136,9 +174,11 @@
 	(payer-name-index payer-name (cdr payers-list) (incf index)))))
 
 (defun bill-name-exists (bill-name)
-  (car
-   (member bill-name *bills* :test #'(lambda (x y)
-				       (string= x (getf y :name))))))
+  (let ((bill
+	 (car
+	  (member bill-name *bills* :test #'(lambda (x y)
+					      (string= x (getf y :name)))))))
+    (if bill bill (format t "There is no bill named ~A!~%" bill-name))))
 
 (defun compute-item (item)
   (let ((total-weight (reduce #'+ (getf item :weights)))
