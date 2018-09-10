@@ -75,7 +75,145 @@
 
 (defun test-computation ()
   (compute-final-totals (compute-owes-totals (compute-bills))))
-  
+
+(defun cli-start ()
+  (cli-make-payers)
+  (cli-make-bills))
+
+(defun cli-make-payers ()
+  (do () (nil)
+    (let ((name (input "Type in name of person (leave empty to proceed): ")))
+      (cond ((zerop (length name))
+	     (if (> (length *payers*) 0) (return t)))
+	    (t (make-payer name))))))
+
+(defun cli-display-indexes (list fun)
+  (do ((element list (cdr element))
+       (index 0 (1+ index)))
+      ((not element))
+    (format t "~&~A / ~A" index (funcall fun element))))
+
+(defun cli-make-bills ()
+  (do () (nil)
+    (let ((name (input "Type in name of bill (leave empty to proceed): ")))
+      (cond ((zerop (length name))
+	     (if (> (length *bills*) 0) (return t)
+		 (format t "~&At least one bill required!")))
+	    (t (format t "~&Type index on this bill's payer.")
+	       (cli-display-indexes *payers* #'caar)
+	       (let ((payer
+		      (cli-choose-payer)))
+		 (if payer
+		     (make-bill name (car payer))
+		     (format t "~&Faulty index given!"))))))))
+
+(defun cli-choose-payer ()
+  (format t "~&Choose payer")
+  (cli-display-indexes *payers* #'caar)
+  (nth (parse-integer (input "input: ") :junk-allowed t) *payers*))
+
+(defun cli-modify-bill ()
+  (format t "Choose bill index to modify:")
+  (cli-display-indexes
+   *bills* #'(lambda (x)
+	       (let ((x (car x)))
+		 (concatenate 'string (getf x :name)
+			      " paid by "
+			      (car (getf x :payer))))))
+  (let* ((bill-index (parse-integer (input "Bill's index: ") :junk-allowed t))
+	 (bill-name (getf (nth bill-index *bills*) :name)))
+    (if bill-name (cli-bill-mode bill-name bill-index)
+	(format t "~&There is no bill named ~S!" bill-name))))
+
+(defun cli-bill-mode (bill-name bill-index)
+  (do () (nil)
+    (let* ((bill (bill-name-exists bill-name))
+	   (bill-string (concatenate 'string "~&"
+				     (getf bill :name) " paid by "
+				     (car (getf bill :payer)))))
+      (format t bill-string)
+      (format t "~&What would you like to do?")
+      (format t "~& 1 : Make new items")
+      (format t "~& 2 : Modify an item")
+      (format t "~& 3 : Rename this bill")
+      (format t "~& 4 : Change bill's payer")
+      (format t "~& 5 : Delete this bill")
+      (format t "~& other : Cancel")
+      (let ((input (parse-integer (input "input: ") :junk-allowed t)))
+	(cond ((eql input 1) (cli-make-items bill-name))
+	      ((eql input 2) (cli-itemlist-mode bill-name))
+	      ((eql input 3) (modify-bill-name bill (input "New name for bill: ")))
+	      ((eql input 4) (modify-bill-payer bill (cli-choose-payer)))
+	      ((eql input 5) (setf *bills* (delete-index-from-list bill-index *bills*))))))))
+	    
+
+(defun cli-make-items (bill-name)
+  (do () (nil)
+    (let* ((item-name (input "Please input name of new item: "))
+	   (item-price (progn (if (zerop (length item-name)) (return-from cli-make-items))
+			      (parse-integer (input "Price: ") :junk-allowed t)))
+	   (item-weights (cli-weight-input)))
+      (make-item item-name bill-name)
+      (set-item-price item-name bill-name item-price)
+      (set-all-item-weights item-name bill-name item-weights))))
+
+(defun cli-weight-input (&optional (payers *payers*))
+  (cond (payers
+	 (format t "~&~A's weight" (caar payers))
+	 (cons (parse-integer (input " : ") :junk-allowed t)
+	       (cli-weight-input (cdr payers))))))
+
+(defun cli-itemlist-mode (bill-name)
+  (do () (nil)
+    (format t "~&Which item do you want to modify?")
+    (let* ((bill (bill-name-exists bill-name))
+	  (item-list (getf bill :items)))
+      (cli-display-indexes item-list
+			   #'(lambda (x)
+			       (cli-print-item (car x))))
+      (let ((index (parse-integer (input "Input: ") :junk-allowed t)))
+	(cond ((not index)
+	       (return nil))
+	      ((and (>= index 0) (< index (length bill)))
+	       (cli-item-mode bill item-list index))
+	      (t (format t "~&Index out of bounds")))))))
+
+(defun cli-item-mode (bill item-list index)
+  (do () (nil)
+    (let ((item (nth index item-list)))
+      (format t "~&What do you want to do?")
+      (format t "~& 1 : Modify name    : ~a" (getf item :name))
+      (format t "~& 2 : Modify price   : ~a" (getf item :price))
+      (format t "~& 3 : Modify weights : ~a" (getf item :weights))
+      (format t "~& 4 : Delete this item")
+      (format t "~& other : Cancel")
+      (let ((input (input "~&input: ")))
+	(cond ((equal input "1")
+	       (modify-item-name item (input "New name: ")))
+	      ((equal input "2")
+	       (modify-item-price item
+				  (parse-integer (input "New price: ") :junk-allowed t)))
+	      ((equal input "3")
+	       (setf (getf item :weights) (cli-weight-input)))
+	      ((equal input "4")
+	       (setf (getf bill :items) (delete-index-from-list index item-list))
+	       (return))
+	      (t (return)))))))
+
+(defun cli-print-item (item)
+  (concatenate 'string
+	       (getf item :name) ", price: "
+	       (write-to-string (getf item :price)) ", weights:"
+	       (write-to-string (getf item :weights))))
+
+(defun modify-bill-name (bill new-name)
+  (if (bill-name-exists new-name)
+      (format t "~&No duplicate bill names allowed!")
+      (setf (getf bill :name) new-name)))
+
+(defun modify-item-name (item new-name)
+  (setf (getf item :name) new-name))
+
 (defun make-bill (bill-name bill-payer-name)
   (let ((bill-payer (payer-name-exists bill-payer-name))) ;pointer to bill's payer in *payers*
     (if (and (not (bill-name-exists bill-name)) bill-payer)
@@ -104,6 +242,10 @@
     (if item
 	(setf (getf item :price) price))))
 
+(defun modify-item-price (item new-price)
+  (if (numberp new-price)
+      (setf (getf item :price) new-price)))
+
 (defun make-payer (payer-name)
   (cond ((payer-name-exists payer-name)
 	 (format t "Payer with name ~S already exists!~%" payer-name))
@@ -131,6 +273,8 @@
     (if (and payer bill)
 	(setf (getf bill :payer) payer))))
 
+(defun modify-bill-payer (bill payer)
+  (setf (getf bill :payer) payer))
 
 ;;Returns list with whatever was at index missing. If index > length fills with NIL.
 (defun delete-index-from-list (index list)
@@ -158,11 +302,10 @@
       (funcall fun item))))
 
 (defun payer-name-exists (bill-payer-name)
-  (let ((payer
-	 (car
-	  (member bill-payer-name *payers* :test #'(lambda (x y)
-						     (string= x (car y)))))))
-    (if payer payer (format t "There is no payer named ~A!~%" bill-payer-name))))
+  (car
+   (member bill-payer-name *payers* :test #'(lambda (x y)
+					      (string= x (car y))))))
+
 
 ;;returns index (0..n) of payer-name within *payers*. NIL if not found.
 (defun payer-name-index (payer-name &optional (payers-list *payers*) (index 0))
@@ -171,14 +314,14 @@
 	((not (caar payers-list))
 	 nil)
 	(t
-	(payer-name-index payer-name (cdr payers-list) (incf index)))))
+	 (payer-name-index payer-name (cdr payers-list) (incf index)))))
 
 (defun bill-name-exists (bill-name)
-  (let ((bill
+  ;;(let ((bill
 	 (car
 	  (member bill-name *bills* :test #'(lambda (x y)
-					      (string= x (getf y :name)))))))
-    (if bill bill (format t "There is no bill named ~A!~%" bill-name))))
+					      (string= x (getf y :name))))))
+    ;;(if bill bill (format t "There is no bill named ~A!~%" bill-name))))
 
 (defun compute-item (item)
   (let ((total-weight (reduce #'+ (getf item :weights)))
@@ -222,7 +365,7 @@
 	(t (format t "NIL values found in data.~%"))))
 
 (defun data-validp ()
-  (and (no-nilsp *payers*) (no-nilsp *bills*)))
+  (and (no-nilsp *payers*) (no-nilsp *bills*) *payers* *bills*))
 
 (defun no-nilsp (tree)
   (cond ((atom tree) t)
@@ -273,9 +416,7 @@
 	 (cons (car list)
 	       (do-to-all-but-index (decf index) (cdr list) fun)))))
 
-
-
 (defun input (message)
-  (format *query-io* "~S:" message)
+  (format *query-io* "~&~A" message)
   (force-output *query-io*)
   (read-line *query-io*))
