@@ -80,6 +80,45 @@
   (cli-make-payers)
   (cli-make-bills))
 
+(defun cli-session ()
+  (do () (nil)
+    (format t "~&What would you like to do?")
+    (format t "~& 1 : Make new payers")
+    (format t "~& 2 : Make new bills")
+    (if *payers* (format t "~& 3 : Modify payers"))
+    (if *bills* (format t "~& 4 : Modify bills"))
+    (format t "~& 5 : Calculate")
+    (let ((input (parse-integer (input "input: ") :junk-allowed t)))
+      (cond
+	((eql input 1) (cli-make-payers))
+	((eql input 2) (cli-make-bills))
+	((and (eql input 3) *payers*) (cli-payer-mode(cli-choose-payer)))
+	((and (eql input 4) *bills*) (cli-bill-mode (cli-choose-bill)))
+	((and (eql input 5) *bills* *payers*)
+	 (compute-final-totals (compute-owes-totals (compute-bills))))))))
+
+(defun cli-payer-mode (payer)
+  (if (null payer) nil)
+  (do () (nil)
+    (format t "~&~s" (car payer))
+    (format t "~&What would you like to do?")
+    (format t "~& 1 : Rename")
+    (format t "~& 2 : Delete")
+    (format t "~& Other : Cancel")
+    (let ((input (parse-integer (input "Input:") :junk-allowed t)))
+      (cond ((eql input 1)
+	     (setf (car payer)
+		   (let ((new-name (input "New name: ")))
+		     (if (and (payer-name-exists new-name) (not (equal new-name (car payer))))
+			 (progn (format t "~&Someone with that name already exists!")
+				(car payer))
+			 new-name))))
+	    ((eql input 2)
+	     (if (y-or-n-p "Are you sure?")
+		 (progn (delete-payer (car payer))
+			(return))))
+	    (t (return))))))
+
 (defun cli-make-payers ()
   (do () (nil)
     (let ((name (input "Type in name of person (leave empty to proceed): ")))
@@ -100,7 +139,6 @@
 	     (if (> (length *bills*) 0) (return t)
 		 (format t "~&At least one bill required!")))
 	    (t (format t "~&Type index on this bill's payer.")
-	       (cli-display-indexes *payers* #'caar)
 	       (let ((payer
 		      (cli-choose-payer)))
 		 (if payer
@@ -110,42 +148,52 @@
 (defun cli-choose-payer ()
   (format t "~&Choose payer")
   (cli-display-indexes *payers* #'caar)
-  (nth (parse-integer (input "input: ") :junk-allowed t) *payers*))
+  (let ((index (parse-integer (input "input: ") :junk-allowed t)))
+    (if index (nth index *payers*))))
+
+(defun cli-choose-bill ()
+  (format t "~&Choose bill")
+  (cli-display-indexes
+   *bills* #'(lambda (x)
+	       (let ((x (car x))) (cli-bill-header-to-string x))))
+  (let ((index (parse-integer (input "input: ") :junk-allowed t)))
+    (if index (nth index *bills*))))
 
 (defun cli-modify-bill ()
   (format t "Choose bill index to modify:")
   (cli-display-indexes
    *bills* #'(lambda (x)
-	       (let ((x (car x)))
-		 (concatenate 'string (getf x :name)
-			      " paid by "
-			      (car (getf x :payer))))))
+	       (let ((x (car x))) (cli-bill-header-to-string x))))
   (let* ((bill-index (parse-integer (input "Bill's index: ") :junk-allowed t))
 	 (bill-name (getf (nth bill-index *bills*) :name)))
     (if bill-name (cli-bill-mode bill-name bill-index)
 	(format t "~&There is no bill named ~S!" bill-name))))
 
-(defun cli-bill-mode (bill-name bill-index)
+;;;(defun cli-bill-mode (bill-name bill-index)
+(defun cli-bill-mode (bill)
+  (if (null bill) (return-from cli-bill-mode))
   (do () (nil)
-    (let* ((bill (bill-name-exists bill-name))
-	   (bill-string (concatenate 'string "~&"
-				     (getf bill :name) " paid by "
-				     (car (getf bill :payer)))))
-      (format t bill-string)
-      (format t "~&What would you like to do?")
-      (format t "~& 1 : Make new items")
-      (format t "~& 2 : Modify an item")
-      (format t "~& 3 : Rename this bill")
-      (format t "~& 4 : Change bill's payer")
-      (format t "~& 5 : Delete this bill")
-      (format t "~& other : Cancel")
-      (let ((input (parse-integer (input "input: ") :junk-allowed t)))
-	(cond ((eql input 1) (cli-make-items bill-name))
-	      ((eql input 2) (cli-itemlist-mode bill-name))
-	      ((eql input 3) (modify-bill-name bill (input "New name for bill: ")))
-	      ((eql input 4) (modify-bill-payer bill (cli-choose-payer)))
-	      ((eql input 5) (setf *bills* (delete-index-from-list bill-index *bills*))))))))
-	    
+    (format t "~&~a" (cli-bill-header-to-string bill))
+    (format t "~&What would you like to do?")
+    (format t "~& 1 : Make new items")
+    (format t "~& 2 : Modify an item")
+    (format t "~& 3 : Rename this bill")
+    (format t "~& 4 : Change bill's payer")
+    (format t "~& 5 : Delete this bill")
+    (format t "~& other : Cancel")
+    (let ((input (parse-integer (input "input: ") :junk-allowed t)))
+      (cond ((eql input 1) (cli-make-items (getf bill :name)))
+	    ((eql input 2) (cli-itemlist-mode (getf bill :name)))
+	    ((eql input 3) (modify-bill-name bill (input "New name for bill: ")))
+	    ((eql input 4) (modify-bill-payer bill (cli-choose-payer)))
+	    ((eql input 5) (setf *bills* (delete-index-from-list (bill-index bill) *bills*))
+	     (return))
+	    (t (return))))))
+
+(defun cli-bill-header-to-string (bill)
+  (concatenate 'string
+	       (getf bill :name) ", paid by "
+	       (car (getf bill :payer))))
 
 (defun cli-make-items (bill-name)
   (do () (nil)
@@ -306,7 +354,6 @@
    (member bill-payer-name *payers* :test #'(lambda (x y)
 					      (string= x (car y))))))
 
-
 ;;returns index (0..n) of payer-name within *payers*. NIL if not found.
 (defun payer-name-index (payer-name &optional (payers-list *payers*) (index 0))
   (cond ((eql (caar payers-list) payer-name)
@@ -317,11 +364,14 @@
 	 (payer-name-index payer-name (cdr payers-list) (incf index)))))
 
 (defun bill-name-exists (bill-name)
-  ;;(let ((bill
-	 (car
-	  (member bill-name *bills* :test #'(lambda (x y)
-					      (string= x (getf y :name))))))
-    ;;(if bill bill (format t "There is no bill named ~A!~%" bill-name))))
+  (car
+   (member bill-name *bills* :test #'(lambda (x y)
+				       (string= x (getf y :name))))))
+
+(defun bill-index (bill &optional (bill-list *bills*) (index 0))
+  (cond ((null bill) nil)
+	((eq bill (car bill-list)) index)
+	(t (bill-index (cdr bill-list) (1+ index)))))
 
 (defun compute-item (item)
   (let ((total-weight (reduce #'+ (getf item :weights)))
