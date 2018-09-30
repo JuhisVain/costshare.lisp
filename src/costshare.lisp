@@ -87,18 +87,37 @@
     (format t "~& 2 : Make new bills")
     (if *payers* (format t "~& 3 : Modify payers"))
     (if *bills* (format t "~& 4 : Modify bills"))
-    (format t "~& 5 : Calculate")
+    (if (and *payers* *bills*) (format t "~& 5 : Calculate"))
     (let ((input (parse-integer (input "input: ") :junk-allowed t)))
       (cond
 	((eql input 1) (cli-make-payers))
 	((eql input 2) (cli-make-bills))
-	((and (eql input 3) *payers*) (cli-payer-mode(cli-choose-payer)))
+	((and (eql input 3) *payers*) (cli-payer-mode (cli-choose-payer)))
 	((and (eql input 4) *bills*) (cli-bill-mode (cli-choose-bill)))
 	((and (eql input 5) *bills* *payers*)
-	 (compute-final-totals (compute-owes-totals (compute-bills))))))))
+	 (cli-print-total))))))
+
+(defun cli-print-total ()
+  (let ((colw 8)
+	(totals (compute-final-totals (compute-owes-totals (compute-bills)))))
+    (format t "~&PAYER   ")
+    (dolist (bill *bills*) ;; print bills' names at top row
+      (format t " : ~8a" (let ((bill-name (getf bill :name)))
+			   (cli-string-cut bill-name colw))))
+    (format t ": Total paid : Owed")
+
+    ;;todo
+    
+    (dolist (payer *payers*)
+      (format t "~&~8a" (cli-string-cut (car payer)))
+      
+
+(defun cli-string-cut (string end)
+  (let ((length (length string)))
+    (subseq string 0 (if (> length end) end length))))
 
 (defun cli-payer-mode (payer)
-  (if (null payer) nil)
+  (if (null payer) (return-from cli-payer-mode))
   (do () (nil)
     (format t "~&~s" (car payer))
     (format t "~&What would you like to do?")
@@ -164,10 +183,8 @@
   (cli-display-indexes
    *bills* #'(lambda (x)
 	       (let ((x (car x))) (cli-bill-header-to-string x))))
-  (let* ((bill-index (parse-integer (input "Bill's index: ") :junk-allowed t))
-	 (bill-name (getf (nth bill-index *bills*) :name)))
-    (if bill-name (cli-bill-mode bill-name bill-index)
-	(format t "~&There is no bill named ~S!" bill-name))))
+  (let* ((bill-index (parse-integer (input "Bill's index: ") :junk-allowed t)))
+    (if bill-index (cli-bill-mode (nth bill-index *bills*)))))
 
 ;;;(defun cli-bill-mode (bill-name bill-index)
 (defun cli-bill-mode (bill)
@@ -193,7 +210,7 @@
 (defun cli-bill-header-to-string (bill)
   (concatenate 'string
 	       (getf bill :name) ", paid by "
-	       (car (getf bill :payer))))
+	       (or (car (getf bill :payer)) "EMPTY")))
 
 (defun cli-make-items (bill-name)
   (do () (nil)
