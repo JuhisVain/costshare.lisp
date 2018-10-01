@@ -85,31 +85,45 @@
     (format t "~&What would you like to do?")
     (format t "~& 1 : Make new payers")
     (format t "~& 2 : Make new bills")
-    (if *payers* (format t "~& 3 : Modify payers"))
-    (if *bills* (format t "~& 4 : Modify bills"))
-    (if (and *payers* *bills*) (format t "~& 5 : Calculate"))
-    (let ((input (parse-integer (input "input: ") :junk-allowed t)))
+    (if *payers* (progn (format t "~& 3 : Modify payers") (cli-warn-if-nonvalid *payers*)))
+    (if *bills* (progn (format t "~& 4 : Modify bills") (cli-warn-if-nonvalid *bills*)))
+    (if (and *payers* *bills* (data-validp)) (format t "~& 5 : Calculate"))
+    (format t "~& 9 : Quit")
+    (let ((input (parse-integer (input "input: ") :junk-allowed t))) ;Why parse integer?
       (cond
 	((eql input 1) (cli-make-payers))
 	((eql input 2) (cli-make-bills))
 	((and (eql input 3) *payers*) (cli-payer-mode (cli-choose-payer)))
 	((and (eql input 4) *bills*) (cli-bill-mode (cli-choose-bill)))
 	((and (eql input 5) *bills* *payers*)
-	 (cli-print-total))))))
+	 (cli-print-total)
+	 )
+	((eql input 9) (return-from cli-session))))))
+
+(defun cli-warn-if-nonvalid (list)
+  (unless (no-nilsp list)
+    (format t " [ERRONEOUS DATA]")))
+
+(defun cli-string-if-nonvalid (list)
+  (if (no-nilsp list)
+      ""
+      " [ERRONEOUS DATA]"))
 
 (defun cli-print-total ()
   (let ((colw 8)
 	(totals (compute-final-totals (compute-owes-totals (compute-bills)))))
     (format t "~&PAYER   ")
     (dolist (bill *bills*) ;; print bills' names at top row
-      (format t " : ~8a" (let ((bill-name (getf bill :name)))
+      (format t " : ~8a " (let ((bill-name (getf bill :name)))
 			   (cli-string-cut bill-name colw))))
-    (format t ": Total paid : Owed")
-
-    ;;todo
-    
+    (format t ": Total paid : Owes")
     (dolist (payer *payers*)
-      (format t "~&~8a" (cli-string-cut (car payer)))
+      (format t "~&~8a" (cli-string-cut (car payer) colw))
+      (dolist (bill (getf totals :bills))
+	(format t " : ~8a " (nth (payer-name-index (car payer)) (getf bill :total-shares))))
+      (format t ": ~8a   " (nth (payer-name-index (car payer)) (getf totals :final-shares)))
+      (format t ": ~8a" (nth (payer-name-index (car payer)) (getf totals :final-owes)))))
+  (format t "~%~%"))
       
 
 (defun cli-string-cut (string end)
@@ -174,7 +188,10 @@
   (format t "~&Choose bill")
   (cli-display-indexes
    *bills* #'(lambda (x)
-	       (let ((x (car x))) (cli-bill-header-to-string x))))
+	       (let ((x (car x)))
+		 (concatenate 'string
+			      (cli-bill-header-to-string x)
+			      (cli-string-if-nonvalid x)))))
   (let ((index (parse-integer (input "input: ") :junk-allowed t)))
     (if index (nth index *bills*))))
 
@@ -182,7 +199,8 @@
   (format t "Choose bill index to modify:")
   (cli-display-indexes
    *bills* #'(lambda (x)
-	       (let ((x (car x))) (cli-bill-header-to-string x))))
+	       (let ((x (car x))) (cli-bill-header-to-string x)
+		    (cli-warn-if-nonvalid x))))
   (let* ((bill-index (parse-integer (input "Bill's index: ") :junk-allowed t)))
     (if bill-index (cli-bill-mode (nth bill-index *bills*)))))
 
@@ -252,7 +270,7 @@
       (format t "~& 3 : Modify weights : ~a" (getf item :weights))
       (format t "~& 4 : Delete this item")
       (format t "~& other : Cancel")
-      (let ((input (input "~&input: ")))
+      (let ((input (input "input: ")))
 	(cond ((equal input "1")
 	       (modify-item-name item (input "New name: ")))
 	      ((equal input "2")
@@ -462,7 +480,7 @@
 	       (all-total-owes (get-all-of-key :total-owes bill-list)))
 	   (list :final-shares (apply #'mapcar #'+ all-total-shares)
 		 :final-owes (apply #'mapcar #'+ all-total-owes)
-		 bill-list)))))
+		 :bills bill-list)))))
 	
 (defun get-all-of-key (key list)
   (if list (cons (getf (car list) key) (get-all-of-key key (cdr list)))))
